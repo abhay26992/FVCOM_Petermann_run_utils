@@ -1,0 +1,210 @@
+#!/bin/bash
+#
+#    If you want to use /bin/csh, you have to change things below!
+#
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#
+#  thinf, July 5th, 2011
+#
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#
+#   ____________________________________________________________
+#  |                                                            | 
+#  | Set up environment for FVCOM job -submission and run       | 
+#  | =====================================================      |
+#  |                                                            | 
+#  | expected directory structure:                              | 
+#  | EXPERIMENT FOLDER                                         |
+#  | |-> EXPERIMENT NAME (location of executable and this run-  |
+#  |                      file)                                 |
+#  |     |-> RUN NAME (location of submission script, in-file,  |
+#  |                   varinfo.dat and specific .nc files)      |
+#  |                                                            |
+#  |____________________________________________________________|
+#
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#
+
+#  Experiment- and run-names and task
+
+#   experiment name (path for changes on compilation level)
+EXP=${1//['/']/}
+# `pwd | awk 'BEGIN{FS="/"}{print $NF}'` # take current directory  
+
+RUN=${2//['/']/}                 # run name (path for changes on post-compilation level)
+TASK=$3                # determines what should be done
+                       #    TASK=[empty]: check result folder and display submission details
+                       #    TASK=run: submitt virgin run
+                       #    TASK=restart: submitt run in existing result folder
+                       #    TASK=redlight: remove redlight from existing result folder
+                       #    TASK=inter: conduct interactive run for testing purposes
+
+QUEUE=$4               # set to express if desired
+
+#  Location for the model results (structure: RESULTDIR/EXP.RUN/resultfiles)
+
+RESULTDIR=/cluster/work/users/abhay/FVCOM_results
+
+JOBDIR=$RESULTDIR/$EXP.$RUN
+
+HERE=`pwd`
+
+
+if [ "$TASK" = "inter" ]; then
+    echo ""
+    echo "INTERACTIVE RUN"
+    echo ""
+    if [ -d $EXP/$RUN/tmp ]; then
+	rm -rf $EXP/$RUN/tmp
+    fi
+    
+    echo "Copy model files to $EXP/$RUN/tmp"
+    echo "..."
+    mkdir $EXP/$RUN/tmp
+    cp $EXP/build/bin/fvcom.bin $EXP/$RUN/tmp/
+    cp $EXP/build/CMakeCache.txt $EXP/$RUN/tmp/
+    cp $EXP/$RUN/${RUN}_run.nml $EXP/$RUN/tmp
+    cp -r $EXP/$RUN/input $EXP/$RUN/tmp/
+    cd $EXP/$RUN/tmp
+    
+    echo "...done"
+    echo ""
+    echo "Interactive RUN!"
+    echo ""
+    echo "**********************************FVCOM>>"
+    echo ""
+#    mpirun -n 1 --mca btl self,sm,tcp fvcom $RUN
+#    module load perf-reports/5.1
+    mpirun -n 4 fvcom.bin --casename=$RUN
+    wait
+    echo ""
+    echo "<<FVCOM**********************************"
+    echo ""
+    echo "Interactive execution finished!"
+    echo ""
+    exit
+else
+
+
+if [ -d $JOBDIR ]; then
+    if  [ "$TASK" = "run" ]; then
+	echo "OPERATION STOPPED:"
+	echo "$JOBDIR exists already and this is NOT a restart!"
+	echo ""
+	exit
+    elif [ "$TASK" = "restart" ]; then
+	if [ -d $JOBDIR/redlight* ]; then
+	    echo "OPERATION STOPPED:"
+	    echo "Redlight ON!!!"
+	    echo ""
+	    exit
+	else
+	    echo "RESTART from $JOBDIR..."
+#	    mkdir $JOBDIR/redlight.$SLURM_JOBID # done by submission script
+	    if [ -d $JOBDIR ]; then
+		NOW=`date "+%Y-%m-%d_%H:%M:%S"`
+		mv $JOBDIR/input $JOBDIR/input.$NOW # backup earlier input files
+	    fi
+	fi
+    elif [ "$TASK" = "redlight" ]; then
+	echo "Remove Redlight from $JOBDIR/"
+	rm -r $JOBDIR/redlight.*
+	echo ""
+	echo "DONE!"
+	echo ""
+	exit
+    else
+	echo "Check $JOBDIR/"
+	echo ""
+	more $EXP/$RUN/${RUN}_run.nml
+        echo ""
+	more $EXP/$RUN/run_fvcom_slurm.sh
+        echo ""
+	echo "Files in $JOBDIR/:"
+	ls $JOBDIR/
+	echo ""
+	echo "OPERATION STOPPED:"
+        echo "Provide TASK for job submission"
+	echo ""
+	exit
+    fi
+else
+    if [ "$TASK" = "run" ]; then
+	echo "START virgin run in $JOBDIR..."
+	mkdir $JOBDIR
+        mkdir $JOBDIR/output
+#	mkdir $JOBDIR/redlight.$SLURM_JOBID # done by submission script
+    elif [ "$TASK" = "restart" ]; then
+	echo "OPERATION STOPPED:"
+	echo "This is a restart, but $JOBDIR does not exist!"
+	echo ""
+	exit
+    elif [ "$TASK" = "redlight" ]; then
+        echo "OPERATION STOPPED:"
+        echo "Attempting to remove edlight, but $JOBDIR does not exist!"
+	echo ""
+        exit
+    else
+	echo ""
+	more $EXP/$RUN/${RUN}_run.nml
+        echo ""
+	more $EXP/$RUN/run_fvcom_slurm.sh
+	echo ""
+	echo "Virgin run, $JOBDIR does not exist"
+	echo ""
+	echo "OPERATION STOPPED:"
+	echo "Provide TASK for job submission"
+	echo ""
+	exit
+    fi
+fi
+
+echo ""
+echo "copy files to $JOBDIR"
+
+if [ -f $EXP/$RUN/${RUN}_run.nml ]; then
+    cp $HERE/$EXP/build/CMakeCache.txt $JOBDIR
+    cd $EXP/$RUN
+    cp ${RUN}_run.nml $JOBDIR
+    cp -r input $JOBDIR
+else
+    echo ""
+    echo "OPERATION STOPPED:"
+    echo "$EXP/$RUN/${RUN}_run.nml does not exist!"
+    echo ""
+    exit
+fi
+
+echo ""
+echo "Submitt $RUN/submission.h"
+if  [ "$QUEUE" = "express" ]; then
+    echo ""
+    echo "EXPRESS RUN"
+    echo ""
+    ulimit -s unlimited
+    sbatch --qos=devel run_fvcom_slurm.sh
+elif [ "$QUEUE" = "multinode" ]; then 
+    echo ""
+    echo "MULTINODE RUN"
+    echo ""
+    sbatch --partition=multinode run_fvcom_slurm.sh
+elif [ "$QUEUE" = "short" ]; then
+    echo ""
+    echo "SHORT RUN"
+    echo ""
+    sbatch --qos=short run_fvcom_slurm.sh
+else
+    echo ""
+    ulimit -s unlimited
+    sbatch run_fvcom_slurm.sh
+fi
+
+echo ""
+echo "DONE!!! The job is running."
+echo ""
+
+fi
+
+exit

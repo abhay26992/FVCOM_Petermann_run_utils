@@ -1,0 +1,91 @@
+#!/bin/bash
+#
+#    If you want to use /bin/csh, you have to change things below!
+#
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#
+#  thinf, Jan 11th, 2013
+#
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#
+#   ____________________________________________________________
+#  |                                                            | 
+#  | Create new FVCOM make executable branch (experiment)       | 
+#  | =====================================================      |
+#  |                                                            | 
+#  | expected directory structure:                              | 
+#  | EXPERIMENT FOLDER                                         |
+#  | |-> EXPERIMENT NAME (location of executable and this run-  |
+#  |                      file)                                 |
+#  |     |-> RUN NAME (location of submission script,           |
+#  |                  start file and specific input files)      |
+#  |                                                            |
+#  |____________________________________________________________|
+#
+#  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+#
+
+echo "********************************************************"
+echo "fv_new - create new FVCOM executable branch (experiment)"
+echo ""
+
+# Experiment name
+EXP_NME=$1
+
+# find current dir
+# RUN_DIR=`pwd | awk 'BEGIN{FS="/"}{print $NF}'` # take current directory  
+RUN_DIR=`pwd`
+
+# Set source code directory containing setup script (default fvom V2.7.1)
+SRC_DEF="fvcom4_fisoc"
+SRC_RT="/cluster/home/$USER"
+
+SRC_DIR="$SRC_RT/$SRC_DEF"
+if  [ ! -z "$2" ]; then
+    if  [ "$2" != "$SRC_DEF" ]; then
+	SRC_DIR="$SRC_RT/$2"
+	echo "source code location specified:"
+	echo "$SRC_DIR"
+	echo ""
+    else
+	echo "use default FVCM version:"
+	echo "$SRC_DIR"
+	echo ""
+    fi
+else
+	echo "use default FVCM version:"
+	echo "$SRC_DIR"
+	echo ""
+fi
+
+# check if experiment exixts already, if so stop
+if [ -d $RUN_DIR/$EXP_NME ]; then
+    if  [ "$3" == "rebuild" ]; then
+        echo "REBULID"
+    else
+        echo "OPERATION STOPPED:"
+        echo ""
+        echo "$RUN_DIR/$EXP_NME"
+        echo "Experiment exists already!"
+        echo ""
+        echo "provide arg2=source_dir (for default: fvcom-apn) and arg3=rebuild to overwrite"
+        exit
+    fi
+else
+    echo "create new experiment"
+    echo "$RUN_DIR/$EXP_NME"
+    echo ""
+fi
+
+echo "*** run setup ***"
+echo ""
+cd /cluster/home/$USER/fvcom-cmake
+./setup --force --fc mpifort --cc mpicc --cxx mpicxx -D ENABLE_PROJ=OFF -D ENABLE_HEATING_CALCULATED=ON -D ENABLE_MPDATA=ON -D ENABLE_TESTS=OFF -D ENABLE_RIVER_FLOAT=ON -D ENABLE_TVD=ON -D ENABLE_WET_DRY=OFF -D NETCDF_DIR=/cluster/software/netCDF/4.7.4-iompi-2020a -D NETCDF_F90_ROOT=/cluster/software/netCDF-Fortran/4.5.2-iompi-2020a $RUN_DIR/$1/build
+cd -
+echo ""
+echo "*** setup done! ***"
+echo ""
+
+exit
